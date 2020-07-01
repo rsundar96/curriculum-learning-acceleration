@@ -1,1 +1,1 @@
-# curriculum-learning-acceleration
+# Curriculum Learning Acceleration
