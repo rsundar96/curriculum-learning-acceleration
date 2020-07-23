@@ -3,7 +3,7 @@
 
 import os
 import download
-import sy
+import sys
 import datasets.Dataset
 import numpy as np
 
