@@ -54,7 +54,6 @@ def get_training_dataloader(mean, std, batch_size=16, num_workers=2, shuffle=Tru
     Args:
         mean: mean of cifar100 training dataset
         std: std of cifar100 training dataset
-        path: path to cifar100 training python dataset
         batch_size: dataloader batchsize
         num_workers: dataloader num_works
         shuffle: whether to shuffle
@@ -81,12 +80,12 @@ def get_training_dataloader(mean, std, batch_size=16, num_workers=2, shuffle=Tru
 
     cl_list = []
     for i in ordering:
-        start_idx = (i - 1) * 128 + 1
+        start_idx = i * 128
         for j in range(start_idx, start_idx + 128):
             cl_list.append(j)
 
-    cl_list = cl_list[:50000]
-    shuffled_dataset = Subset(cifar100_training, cl_list)
+    new_cl_list = [i for i in cl_list if i < 50000]
+    shuffled_dataset = Subset(cifar100_training, new_cl_list)
 
     cifar100_training_loader = DataLoader(shuffled_dataset, shuffle=False, num_workers=num_workers, batch_size=batch_size)
 
