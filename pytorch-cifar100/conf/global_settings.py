@@ -1,12 +1,5 @@
-""" configurations for this project
-
-author baiyu
-"""
 import os
 from datetime import datetime
-
-#CIFAR100 dataset path (python version)
-#CIFAR100_PATH = '/nfs/private/cifar100/cifar-100-python'
 
 #mean and std of cifar100 dataset
 CIFAR100_TRAIN_MEAN = (0.5070751592371323, 0.48654887331495095, 0.4409178433670343)
@@ -33,11 +26,3 @@ LOG_DIR = 'runs'
 
 #save weights file per SAVE_EPOCH epoch
 SAVE_EPOCH = 10
-
-
-
-
-
-
-
-
