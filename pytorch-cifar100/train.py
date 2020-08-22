@@ -153,19 +153,19 @@ if __name__ == '__main__':
         device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
         # Load the location of the pretrained weights here
-        weights_path = './checkpoint/vgg19/Friday_21_August_2020_22h_19m_33s/vgg19-89-best.pth'
+        weights_path = './checkpoint/resnet50/Saturday_22_August_2020_16h_31m_22s/resnet50-95-best.pth'
         net.load_state_dict(torch.load(weights_path), args.gpu)
 
         for param in net.parameters():
             param.requires_grad = False
 
-        num_ftrs = net.classifier[6].in_features
-        net.classifier[6] = nn.Linear(num_ftrs, 100)
+        num_ftrs = net.fc.in_features
+        net.fc = nn.Linear(num_ftrs, 100)
 
         net = net.to(device)
 
-        # Optimize only last layer
-        optimizer = optim.SGD(net.classifier[6].parameters(), lr=args.lr, momentum=0.9, weight_decay=5e-4)
+        # Optimize only last layer (net.classifier[6] for vgg models, net.fc for resnet models)
+        optimizer = optim.SGD(net.fc.parameters(), lr=args.lr, momentum=0.9, weight_decay=5e-4)
 
     else:
         # Optimize the entire network
