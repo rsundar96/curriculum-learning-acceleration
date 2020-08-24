@@ -51,7 +51,7 @@ def get_network(args):
     return net
 
 
-def get_training_dataloader(mean, std, batch_size=16, num_workers=2, shuffle=True, curriculum=False):
+def get_training_dataloader(mean, std, batch_size=16, num_workers=2, shuffle=True, curriculum=False, anti=False):
     """ return training dataloader
     Args:
         mean: mean of cifar100 training dataset
@@ -72,12 +72,16 @@ def get_training_dataloader(mean, std, batch_size=16, num_workers=2, shuffle=Tru
     ])
     cifar100_training = torchvision.datasets.CIFAR100(root='./data', train=True, download=True, transform=transform_train)
 
-    if curriculum:
+    if curriculum or anti:
         # Read the img losses from the pickled file
         with open ('cifar100_img_losses', 'rb') as fp:
             img_losses = pickle.load(fp)
 
         curriculum_ordering = np.argsort(img_losses).tolist()
+
+        if anti:
+            curriculum_ordering.reverse()
+
         shuffled_dataset = Subset(cifar100_training, curriculum_ordering)
 
         cifar100_training_loader = DataLoader(shuffled_dataset, shuffle=shuffle, num_workers=num_workers, batch_size=batch_size)
