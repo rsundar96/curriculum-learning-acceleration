@@ -7,20 +7,14 @@ import torchvision
 import torchvision.transforms as transforms
 
 from torch.optim.lr_scheduler import _LRScheduler
-from torch.utils.data import DataLoader, Subset
+from torch.utils.data import DataLoader, Subset, WeightedRandomSampler
 
 
 def get_network(args):
     """ return given network
     """
 
-    if args.net == 'vgg16':
-        from models.vgg import vgg16_bn
-        net = vgg16_bn()
-    elif args.net == 'vgg13':
-        from models.vgg import vgg13_bn
-        net = vgg13_bn()
-    elif args.net == 'vgg11':
+    if args.net == 'vgg11':
         from models.vgg import vgg11_bn
         net = vgg11_bn()
     elif args.net == 'vgg19':
@@ -29,18 +23,9 @@ def get_network(args):
     elif args.net == 'resnet18':
         from models.resnet import resnet18
         net = resnet18()
-    elif args.net == 'resnet34':
-        from models.resnet import resnet34
-        net = resnet34()
     elif args.net == 'resnet50':
         from models.resnet import resnet50
         net = resnet50()
-    elif args.net == 'resnet101':
-        from models.resnet import resnet101
-        net = resnet101()
-    elif args.net == 'resnet152':
-        from models.resnet import resnet152
-        net = resnet152()
     else:
         print('the network name you have entered is not supported yet')
         sys.exit()
@@ -51,7 +36,7 @@ def get_network(args):
     return net
 
 
-def get_training_dataloader(mean, std, batch_size=16, num_workers=2, shuffle=True, curriculum=False, anti=False):
+def get_training_dataloader(mean, std, batch_size=16, num_workers=2, shuffle=True, curriculum=False, anti=False, weights=False):
     """ return training dataloader
     Args:
         mean: mean of cifar100 training dataset
@@ -81,10 +66,28 @@ def get_training_dataloader(mean, std, batch_size=16, num_workers=2, shuffle=Tru
 
         if anti:
             curriculum_ordering.reverse()
+            shuffled_dataset = Subset(cifar100_training, curriculum_ordering)
+            cifar100_training_loader = DataLoader(shuffled_dataset, shuffle=shuffle, num_workers=num_workers, batch_size=batch_size)
 
-        shuffled_dataset = Subset(cifar100_training, curriculum_ordering)
+        elif weights:
+            # For WeightedRandomSampler (only for Curriculum)
+            # weights = np.sort(img_losses)[::-1].copy()
+            num_samples = len(cifar100_training.data)
+            weight_list = np.arange(num_samples)
+            weights = weight_list / num_samples
+            weights = weights[::-1].copy()
+            sampler = WeightedRandomSampler(weights, num_samples, replacement=True)
 
-        cifar100_training_loader = DataLoader(shuffled_dataset, shuffle=shuffle, num_workers=num_workers, batch_size=batch_size)
+            shuffled_dataset = Subset(cifar100_training, curriculum_ordering)
+            cifar100_training_loader = DataLoader(shuffled_dataset, shuffle=shuffle, sampler=sampler, num_workers=num_workers, batch_size=batch_size)
+
+        else:
+            num_samples = len(cifar100_training.data)
+            weights = [1] * num_samples
+            sampler = WeightedRandomSampler(weights, num_samples, replacement=True)
+
+            shuffled_dataset = Subset(cifar100_training, curriculum_ordering)
+            cifar100_training_loader = DataLoader(shuffled_dataset, shuffle=shuffle, sampler=sampler, num_workers=num_workers, batch_size=batch_size)
 
     else:
         cifar100_training_loader = DataLoader(cifar100_training, shuffle=shuffle, num_workers=num_workers, batch_size=batch_size)

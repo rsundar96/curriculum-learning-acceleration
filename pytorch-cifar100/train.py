@@ -43,7 +43,7 @@ def curriculum_img_order():
     return idx2Scores
 
 
-def train(epoch, pretrained, train_loss_list, train_acc_list, test_loss_list, test_acc_list):
+def train(epoch, curriculum, pretrained, train_loss_list, train_acc_list, test_loss_list, test_acc_list):
     start = time.time()
     net.train()
 
@@ -52,33 +52,63 @@ def train(epoch, pretrained, train_loss_list, train_acc_list, test_loss_list, te
     train_acc_epoch = 0.0
     correct = 0.0
 
-    for batch_index, (images, labels) in enumerate(cifar100_training_loader):
-        if epoch <= args.warm:
-            warmup_scheduler.step()
+    if curriculum and epoch <= 10:
+        for batch_index, (images, labels) in enumerate(weighted_curriculum_loader):
+            if epoch <= args.warm:
+                warmup_scheduler.step()
 
-        labels = labels.cuda()
-        images = images.cuda()
+            labels = labels.cuda()
+            images = images.cuda()
 
-        optimizer.zero_grad()
-        outputs = net(images)
-        loss = loss_function(outputs, labels)
-        loss.backward()
-        optimizer.step()
+            optimizer.zero_grad()
+            outputs = net(images)
+            loss = loss_function(outputs, labels)
+            loss.backward()
+            optimizer.step()
 
-        # To obtain training accuracy
-        _, preds = outputs.max(1)
-        correct += preds.eq(labels).sum()
+            # To obtain training accuracy
+            _, preds = outputs.max(1)
+            correct += preds.eq(labels).sum()
 
-        # Store training loss and accuracy
-        train_loss_epoch += loss.item()
+            # Store training loss and accuracy
+            train_loss_epoch += loss.item()
 
-        print('Training Epoch: {epoch} [{trained_samples}/{total_samples}]\tLoss: {:0.4f}\tLR: {:0.6f}'.format(
-            loss.item(),
-            optimizer.param_groups[0]['lr'],
-            epoch=epoch,
-            trained_samples=batch_index * args.b + len(images),
-            total_samples=len(cifar100_training_loader.dataset)
-        ))
+            print('Training Epoch: {epoch} [{trained_samples}/{total_samples}]\tLoss: {:0.4f}\tLR: {:0.6f}'.format(
+                loss.item(),
+                optimizer.param_groups[0]['lr'],
+                epoch=epoch,
+                trained_samples=batch_index * args.b + len(images),
+                total_samples=len(weighted_curriculum_loader.dataset)
+            ))
+
+    elif (curriculum and epoch > 10) or not curriculum:
+        for batch_index, (images, labels) in enumerate(cifar100_training_loader):
+            if epoch <= args.warm:
+                warmup_scheduler.step()
+
+            labels = labels.cuda()
+            images = images.cuda()
+
+            optimizer.zero_grad()
+            outputs = net(images)
+            loss = loss_function(outputs, labels)
+            loss.backward()
+            optimizer.step()
+
+            # To obtain training accuracy
+            _, preds = outputs.max(1)
+            correct += preds.eq(labels).sum()
+
+            # Store training loss and accuracy
+            train_loss_epoch += loss.item()
+
+            print('Training Epoch: {epoch} [{trained_samples}/{total_samples}]\tLoss: {:0.4f}\tLR: {:0.6f}'.format(
+                loss.item(),
+                optimizer.param_groups[0]['lr'],
+                epoch=epoch,
+                trained_samples=batch_index * args.b + len(images),
+                total_samples=len(cifar100_training_loader.dataset)
+            ))
 
     # Obtain the losses of each individual image in the dataset
     # Only execute when running the pretrained network with last layer being trained AND
@@ -154,7 +184,7 @@ if __name__ == '__main__':
         device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
         # Load the location of the pretrained weights here
-        weights_path = './checkpoint/vgg11/Monday_24_August_2020_13h_48m_46s/vgg11-96-best.pth'
+        weights_path = './checkpoint/vgg11/Thursday_27_August_2020_17h_57m_42s/vgg11-82-best.pth'
         net.load_state_dict(torch.load(weights_path), args.gpu)
 
         for param in net.parameters():
@@ -178,6 +208,7 @@ if __name__ == '__main__':
         settings.CIFAR100_TRAIN_STD,
         num_workers=4,
         batch_size=args.b,
+        # Shuffle to be set True only for Vanilla implementation
         shuffle=False,
         curriculum=args.curriculum,
         anti=args.anticurriculum
@@ -191,7 +222,7 @@ if __name__ == '__main__':
         shuffle=True
     )
 
-    # Curriculum DataLoader
+    # Curriculum DataLoader to obtain image losses
     if args.pretrained:
         curriculum_dataloader = get_training_dataloader(
             settings.CIFAR100_TRAIN_MEAN,
@@ -203,6 +234,18 @@ if __name__ == '__main__':
 
         # Loss Function for Curriculum Ordering
         cl_loss_function = nn.CrossEntropyLoss(reduction='none')
+
+    if args.curriculum:
+        weighted_curriculum_loader = get_training_dataloader(
+            settings.CIFAR100_TRAIN_MEAN,
+            settings.CIFAR100_TRAIN_STD,
+            num_workers=4,
+            batch_size=args.b,
+            shuffle=False,
+            curriculum=args.curriculum,
+            anti=args.anticurriculum,
+            weights=True
+        )
 
     loss_function = nn.CrossEntropyLoss()
     train_scheduler = optim.lr_scheduler.MultiStepLR(optimizer, milestones=settings.MILESTONES,
@@ -227,7 +270,7 @@ if __name__ == '__main__':
         if epoch > args.warm:
             train_scheduler.step(epoch)
 
-        train(epoch, args.pretrained, train_loss_list, train_acc_list, test_loss_list, test_acc_list)
+        train(epoch, args.curriculum, args.pretrained, train_loss_list, train_acc_list, test_loss_list, test_acc_list)
         acc = eval_training(epoch, train_loss_list, train_acc_list, test_loss_list, test_acc_list)
 
         # Start to save best performance model after learning rate decay to 0.01
