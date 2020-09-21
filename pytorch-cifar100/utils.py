@@ -10,6 +10,10 @@ from torch.optim.lr_scheduler import _LRScheduler
 from torch.utils.data import DataLoader, Subset, WeightedRandomSampler
 
 
+def softmax(x):
+    e_x = np.exp(x - np.max(x))
+    return e_x / e_x.sum()
+
 def get_network(args):
     """ return given network
     """
@@ -36,7 +40,7 @@ def get_network(args):
     return net
 
 
-def get_training_dataloader(mean, std, batch_size=16, num_workers=2, shuffle=True, curriculum=False, anti=False, weights=False):
+def get_training_dataloader(mean, std, batch_size=16, num_workers=2, shuffle=False, curriculum=False, anti=False, weights=False, temp=1):
     """ return training dataloader
     Args:
         mean: mean of cifar100 training dataset
@@ -48,7 +52,6 @@ def get_training_dataloader(mean, std, batch_size=16, num_workers=2, shuffle=Tru
     """
 
     transform_train = transforms.Compose([
-        #transforms.ToPILImage(),
         transforms.RandomCrop(32, padding=4),
         transforms.RandomHorizontalFlip(),
         transforms.RandomRotation(15),
@@ -63,28 +66,16 @@ def get_training_dataloader(mean, std, batch_size=16, num_workers=2, shuffle=Tru
             img_losses = pickle.load(fp)
 
         curriculum_ordering = np.argsort(img_losses).tolist()
+        num_samples = len(cifar100_training.data)
 
         if anti:
             curriculum_ordering.reverse()
             shuffled_dataset = Subset(cifar100_training, curriculum_ordering)
             cifar100_training_loader = DataLoader(shuffled_dataset, shuffle=shuffle, num_workers=num_workers, batch_size=batch_size)
 
-        elif weights:
-            # For WeightedRandomSampler (only for Curriculum)
-            # weights = np.sort(img_losses)[::-1].copy()
-            num_samples = len(cifar100_training.data)
-            weight_list = np.arange(num_samples)
-            weights = weight_list / num_samples
-            weights = weights[::-1].copy()
-            sampler = WeightedRandomSampler(weights, num_samples, replacement=True)
-
-            shuffled_dataset = Subset(cifar100_training, curriculum_ordering)
-            cifar100_training_loader = DataLoader(shuffled_dataset, shuffle=shuffle, sampler=sampler, num_workers=num_workers, batch_size=batch_size)
-
         else:
-            num_samples = len(cifar100_training.data)
-            weights = [1] * num_samples
-            sampler = WeightedRandomSampler(weights, num_samples, replacement=True)
+            weights = softmax(np.asarray(img_losses) / temp)
+            sampler = WeightedRandomSampler(weights, num_samples, replacement=False)
 
             shuffled_dataset = Subset(cifar100_training, curriculum_ordering)
             cifar100_training_loader = DataLoader(shuffled_dataset, shuffle=shuffle, sampler=sampler, num_workers=num_workers, batch_size=batch_size)

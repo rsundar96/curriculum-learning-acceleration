@@ -52,63 +52,33 @@ def train(epoch, curriculum, pretrained, train_loss_list, train_acc_list, test_l
     train_acc_epoch = 0.0
     correct = 0.0
 
-    if curriculum and epoch <= 10:
-        for batch_index, (images, labels) in enumerate(weighted_curriculum_loader):
-            if epoch <= args.warm:
-                warmup_scheduler.step()
+    for batch_index, (images, labels) in enumerate(cifar100_training_loader):
+        if epoch <= args.warm:
+            warmup_scheduler.step()
 
-            labels = labels.cuda()
-            images = images.cuda()
+        labels = labels.cuda()
+        images = images.cuda()
 
-            optimizer.zero_grad()
-            outputs = net(images)
-            loss = loss_function(outputs, labels)
-            loss.backward()
-            optimizer.step()
+        optimizer.zero_grad()
+        outputs = net(images)
+        loss = loss_function(outputs, labels)
+        loss.backward()
+        optimizer.step()
 
-            # To obtain training accuracy
-            _, preds = outputs.max(1)
-            correct += preds.eq(labels).sum()
+        # To obtain training accuracy
+        _, preds = outputs.max(1)
+        correct += preds.eq(labels).sum()
 
-            # Store training loss and accuracy
-            train_loss_epoch += loss.item()
+        # Store training loss and accuracy
+        train_loss_epoch += loss.item()
 
-            print('Training Epoch: {epoch} [{trained_samples}/{total_samples}]\tLoss: {:0.4f}\tLR: {:0.6f}'.format(
-                loss.item(),
-                optimizer.param_groups[0]['lr'],
-                epoch=epoch,
-                trained_samples=batch_index * args.b + len(images),
-                total_samples=len(weighted_curriculum_loader.dataset)
-            ))
-
-    elif (curriculum and epoch > 10) or not curriculum:
-        for batch_index, (images, labels) in enumerate(cifar100_training_loader):
-            if epoch <= args.warm:
-                warmup_scheduler.step()
-
-            labels = labels.cuda()
-            images = images.cuda()
-
-            optimizer.zero_grad()
-            outputs = net(images)
-            loss = loss_function(outputs, labels)
-            loss.backward()
-            optimizer.step()
-
-            # To obtain training accuracy
-            _, preds = outputs.max(1)
-            correct += preds.eq(labels).sum()
-
-            # Store training loss and accuracy
-            train_loss_epoch += loss.item()
-
-            print('Training Epoch: {epoch} [{trained_samples}/{total_samples}]\tLoss: {:0.4f}\tLR: {:0.6f}'.format(
-                loss.item(),
-                optimizer.param_groups[0]['lr'],
-                epoch=epoch,
-                trained_samples=batch_index * args.b + len(images),
-                total_samples=len(cifar100_training_loader.dataset)
-            ))
+        print('Training Epoch: {epoch} [{trained_samples}/{total_samples}]\tLoss: {:0.4f}\tLR: {:0.6f}'.format(
+            loss.item(),
+            optimizer.param_groups[0]['lr'],
+            epoch=epoch,
+            trained_samples=batch_index * args.b + len(images),
+            total_samples=len(cifar100_training_loader.dataset)
+        ))
 
     # Obtain the losses of each individual image in the dataset
     # Only execute when running the pretrained network with last layer being trained AND
@@ -202,26 +172,6 @@ if __name__ == '__main__':
         # Optimize the entire network
         optimizer = optim.SGD(net.parameters(), lr=args.lr, momentum=0.9, weight_decay=5e-4)
 
-    # Data preprocessing (Train and Test DataLoaders)
-    cifar100_training_loader = get_training_dataloader(
-        settings.CIFAR100_TRAIN_MEAN,
-        settings.CIFAR100_TRAIN_STD,
-        num_workers=4,
-        batch_size=args.b,
-        # Shuffle to be set True only for Vanilla implementation
-        shuffle=False,
-        curriculum=args.curriculum,
-        anti=args.anticurriculum
-    )
-
-    cifar100_test_loader = get_test_dataloader(
-        settings.CIFAR100_TRAIN_MEAN,
-        settings.CIFAR100_TRAIN_STD,
-        num_workers=4,
-        batch_size=args.b,
-        shuffle=True
-    )
-
     # Curriculum DataLoader to obtain image losses
     if args.pretrained:
         curriculum_dataloader = get_training_dataloader(
@@ -235,23 +185,10 @@ if __name__ == '__main__':
         # Loss Function for Curriculum Ordering
         cl_loss_function = nn.CrossEntropyLoss(reduction='none')
 
-    if args.curriculum:
-        weighted_curriculum_loader = get_training_dataloader(
-            settings.CIFAR100_TRAIN_MEAN,
-            settings.CIFAR100_TRAIN_STD,
-            num_workers=4,
-            batch_size=args.b,
-            shuffle=False,
-            curriculum=args.curriculum,
-            anti=args.anticurriculum,
-            weights=True
-        )
-
     loss_function = nn.CrossEntropyLoss()
     train_scheduler = optim.lr_scheduler.MultiStepLR(optimizer, milestones=settings.MILESTONES,
                                                      gamma=0.2)  # learning rate decay
-    iter_per_epoch = len(cifar100_training_loader)
-    warmup_scheduler = WarmUpLR(optimizer, iter_per_epoch * args.warm)
+
     checkpoint_path = os.path.join(settings.CHECKPOINT_PATH, args.net, settings.TIME_NOW)
 
     # Create checkpoint folder to save model
@@ -266,7 +203,41 @@ if __name__ == '__main__':
     test_acc_list = []
 
     best_acc = 0.0
+
+    sensitivity = 0.25
+    temperature = 1
+
     for epoch in range(1, settings.EPOCH):
+
+        # shuffle = True if not args.curriculum and args.anticurriculum else False
+        # weights = True if (epoch <= 10) and args.curriculum else False
+
+        # if epoch % 2:
+        temperature = min(10, 1 + (sensitivity * (epoch - 1)))
+
+        # DataLoaders for training and test datasets
+        cifar100_training_loader = get_training_dataloader(
+            settings.CIFAR100_TRAIN_MEAN,
+            settings.CIFAR100_TRAIN_STD,
+            num_workers=4,
+            batch_size=args.b,
+            curriculum=args.curriculum,
+            anti=args.anticurriculum,
+            # weights=weights,
+            temp=temperature
+        )
+
+        cifar100_test_loader = get_test_dataloader(
+            settings.CIFAR100_TRAIN_MEAN,
+            settings.CIFAR100_TRAIN_STD,
+            num_workers=4,
+            batch_size=args.b,
+            shuffle=True
+        )
+
+        iter_per_epoch = len(cifar100_training_loader)
+        warmup_scheduler = WarmUpLR(optimizer, iter_per_epoch * args.warm)
+
         if epoch > args.warm:
             train_scheduler.step(epoch)
 
