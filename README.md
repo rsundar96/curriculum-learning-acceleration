@@ -20,7 +20,7 @@ Run `python main.py` in order to start the training process. Supports VGG19 and 
 
 #### II. CIFAR-100
 
-Run `python train.py -net [MODEL] -gpu`, where `[MODEL]` can be any of the vgg (vgg11/vgg13/vgg19) or resnet (resnet18/resnet50) based variants. The weights file with thee best accuracy will be written to disk with the suffix "best" (located in the checkpoint folder).
+Run `python train.py -net [MODEL] -gpu`, where `[MODEL]` can be any of the vgg (vgg11/vgg13/vgg19) or resnet (resnet18/resnet50) based variants. The weights file with the best accuracy will be written to disk with the suffix "best" (located in the checkpoint folder).
 
 To test the model, run `python test.py -net [MODEL] path_to_[MODEL]_weights_file`.
 
